@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table"
 import { DollarSign } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 interface CommissionsPageProps {
   searchParams: Promise<{ period?: string }>
 }

@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { redirect } from "next/navigation"
 import { LoyaltyPanel } from "@/components/admin/loyalty-panel"
 
+export const dynamic = "force-dynamic"
+
 export default async function LoyaltyPage() {
   const restaurant = await prisma.restaurant.findFirst({
     select: { id: true, name: true },

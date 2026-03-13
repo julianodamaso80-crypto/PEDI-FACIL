@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { redirect } from "next/navigation"
 import { MenuPanel } from "@/components/admin/menu-panel"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminMenuPage() {
   const restaurant = await prisma.restaurant.findFirst({
     select: { id: true, name: true },

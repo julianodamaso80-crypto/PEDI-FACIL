@@ -20,6 +20,8 @@ import {
   Trophy,
 } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default async function DashboardPage() {
   const restaurant = await prisma.restaurant.findFirst({
     select: { id: true, commissionRate: true },

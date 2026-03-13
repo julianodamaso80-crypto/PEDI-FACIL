@@ -4,6 +4,8 @@ import { CartProvider } from "@/contexts/cart-context"
 import { RestaurantProvider } from "@/contexts/restaurant-context"
 import type { RestaurantWithMenu } from "@/types"
 
+export const dynamic = "force-dynamic"
+
 export default async function StoreLayout({
   children,
   params,

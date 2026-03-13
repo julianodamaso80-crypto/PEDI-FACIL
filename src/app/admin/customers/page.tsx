@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { redirect } from "next/navigation"
 import { CustomersPanel } from "@/components/admin/customers-panel"
 
+export const dynamic = "force-dynamic"
+
 export default async function CustomersPage() {
   const restaurant = await prisma.restaurant.findFirst({
     select: { id: true, name: true },

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db"
 import type { RestaurantWithMenu } from "@/types"
 import { StoreContent } from "./store-content"
 
+export const dynamic = "force-dynamic"
+
 export default async function StorePage({
   params,
 }: {

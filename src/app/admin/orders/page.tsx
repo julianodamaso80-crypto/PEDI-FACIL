@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db"
 import { OrdersPanel } from "@/components/admin/orders-panel"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminOrdersPage() {
   // Temporary: fetch the first restaurant until auth is implemented
   const restaurant = await prisma.restaurant.findFirst()

@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db"
 import { redirect } from "next/navigation"
 import { SettingsPanel } from "@/components/admin/settings-panel"
 
+export const dynamic = "force-dynamic"
+
 export default async function SettingsPage() {
   const restaurant = await prisma.restaurant.findFirst()
 
