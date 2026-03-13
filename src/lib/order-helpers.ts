@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderType } from "@/generated/prisma"
+import type { OrderStatus, OrderType } from "@/generated/prisma/enums"
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Pendente",
