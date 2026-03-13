@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  SUPER_ADMIN
+  RESTAURANT_OWNER
+  STAFF
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderType {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CampaignType {
+  REACTIVATION
+  BIRTHDAY
+  PROMOTION
+  NEW_ITEM
+  LOYALTY_REWARD
+}
+
+enum Channel {
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+// ==================== MODELS ====================
+
+model User {
+  id         String      @id @default(cuid())
+  name       String
+  email      String      @unique
+  password   String
+  phone      String?
+  role       Role        @default(RESTAURANT_OWNER)
+  restaurant Restaurant?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Restaurant {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  description    String?
+  logo           String?
+  bannerImage    String?
+  phone          String
+  whatsapp       String
+  email          String
+  address        String
+  city           String
+  state          String
+  zipCode        String
+  latitude       Float?
+  longitude      Float?
+
+  // Configurações
+  isOpen         Boolean  @default(true)
+  openingHours   Json     // { "monday": { "open": "08:00", "close": "22:00" }, ... }
+  minimumOrder   Float    @default(0)
+  deliveryFee    Float    @default(0)
+  deliveryRadius Float    @default(5)
+  estimatedTime  Int      @default(45)
+  acceptsPix     Boolean  @default(true)
+  acceptsCard    Boolean  @default(false)
+  acceptsCash    Boolean  @default(true)
+
+  // Branding
+  primaryColor   String   @default("#FF6B00")
+  secondaryColor String   @default("#1A1A2E")
+
+  // Mercado Pago
+  mpAccessToken  String?
+
+  // Comissão da plataforma
+  commissionRate Float    @default(0.07)
+
+  // Relacionamentos
+  ownerId        String   @unique
+  owner          User     @relation(fields: [ownerId], references: [id])
+  categories     MenuCategory[]
+  items          MenuItem[]
+  orders         Order[]
+  customers      Customer[]
+  campaigns      Campaign[]
+  loyaltyConfig  LoyaltyConfig?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model MenuCategory {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  image        String?
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items        MenuItem[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model MenuItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  image       String?
+  isAvailable Boolean  @default(true)
+  isPopular   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  // Adicionais/Variações
+  extras      Json?
+  sizes       Json?
+
+  categoryId   String
+  category     MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  restaurantId String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Customer {
+  id           String    @id @default(cuid())
+  name         String
+  phone        String
+  email        String?
+  address      String?
+  birthday     DateTime?
+
+  // Fidelidade
+  loyaltyPoints Int      @default(0)
+  totalOrders   Int      @default(0)
+  totalSpent    Float    @default(0)
+  lastOrderAt   DateTime?
+
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([phone, restaurantId])
+}
+
+model Order {
+  id              String        @id @default(cuid())
+  orderNumber     Int
+  status          OrderStatus   @default(PENDING)
+  type            OrderType     @default(DELIVERY)
+
+  // Valores
+  subtotal        Float
+  deliveryFee     Float         @default(0)
+  discount        Float         @default(0)
+  total           Float
+  commissionAmount Float        @default(0)
+
+  // Pagamento
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PENDING)
+  mpPaymentId     String?
+  pixQrCode       String?
+  pixCopyPaste    String?
+
+  // Entrega
+  deliveryAddress String?
+  deliveryNotes   String?
+  estimatedTime   Int?
+
+  // Cupom
+  couponCode      String?
+
+  customerId      String
+  customer        Customer     @relation(fields: [customerId], references: [id])
+  restaurantId    String
+  restaurant      Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items           OrderItem[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  quantity   Int
+  unitPrice  Float
+  totalPrice Float
+  notes      String?
+  extras     Json?
+  size       String?
+
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Campaign {
+  id                 String       @id @default(cuid())
+  name               String
+  type               CampaignType
+  message            String
+  channel            Channel      @default(WHATSAPP)
+
+  // Segmentação
+  targetDaysInactive Int?
+  targetMinOrders    Int?
+  targetBirthday     Boolean      @default(false)
+
+  // Cupom vinculado
+  couponCode         String?
+  discountPercent    Float?
+  discountFixed      Float?
+
+  // Métricas
+  totalSent          Int          @default(0)
+  totalOpened        Int          @default(0)
+  totalConverted     Int          @default(0)
+
+  // Agendamento
+  isActive           Boolean      @default(true)
+  isAutomated        Boolean      @default(false)
+  scheduledAt        DateTime?
+  lastRunAt          DateTime?
+
+  restaurantId       String
+  restaurant         Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model LoyaltyConfig {
+  id              String   @id @default(cuid())
+  isActive        Boolean  @default(true)
+  pointsPerReal   Int      @default(1)
+  rewardThreshold Int      @default(100)
+  rewardType      String   @default("DISCOUNT_PERCENT")
+  rewardValue     Float    @default(10)
+
+  restaurantId    String   @unique
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
