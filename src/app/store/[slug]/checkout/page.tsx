@@ -14,6 +14,7 @@ import {
   MapPin,
   ShoppingBag,
   Loader2,
+  Search,
 } from "lucide-react"
 import { useCart } from "@/contexts/cart-context"
 import { useRestaurant } from "@/contexts/restaurant-context"
@@ -32,7 +33,11 @@ const checkoutSchema = z
     phone: z.string().min(14, "Telefone inválido"),
     email: z.string().email("Email inválido").optional().or(z.literal("")),
     orderType: z.enum(["DELIVERY", "PICKUP"]),
-    address: z.string().optional(),
+    cep: z.string().optional(),
+    street: z.string().optional(),
+    number: z.string().optional(),
+    neighborhood: z.string().optional(),
+    city: z.string().optional(),
     complement: z.string().optional(),
     reference: z.string().optional(),
     paymentMethod: z.enum(["PIX", "CREDIT_CARD", "DEBIT_CARD", "CASH"]),
@@ -42,13 +47,13 @@ const checkoutSchema = z
   .refine(
     (data) => {
       if (data.orderType === "DELIVERY") {
-        return !!data.address && data.address.trim().length > 0
+        return !!data.street?.trim() && !!data.number?.trim()
       }
       return true
     },
     {
-      message: "Endereço é obrigatório para entrega",
-      path: ["address"],
+      message: "Rua e número são obrigatórios para entrega",
+      path: ["street"],
     }
   )
 
@@ -62,6 +67,12 @@ function formatPhoneMask(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
 }
 
+function formatCepMask(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8)
+  if (digits.length <= 5) return digits
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const params = useParams()
@@ -70,6 +81,7 @@ export default function CheckoutPage() {
   const restaurant = useRestaurant()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isFetchingCep, setIsFetchingCep] = useState(false)
 
   const {
     register,
@@ -84,7 +96,11 @@ export default function CheckoutPage() {
       phone: "",
       email: "",
       orderType: "DELIVERY",
-      address: "",
+      cep: "",
+      street: "",
+      number: "",
+      neighborhood: "",
+      city: "",
       complement: "",
       reference: "",
       paymentMethod: "PIX",
@@ -108,10 +124,43 @@ export default function CheckoutPage() {
   const discount = cart.discount
   const total = subtotal + deliveryFee - discount
 
+  async function handleCepSearch() {
+    const cepValue = watch("cep") || ""
+    const digits = cepValue.replace(/\D/g, "")
+    if (digits.length !== 8) {
+      toast({ title: "CEP inválido", description: "Digite os 8 dígitos do CEP", variant: "destructive" })
+      return
+    }
+    setIsFetchingCep(true)
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      const data = await res.json()
+      if (data.erro) {
+        toast({ title: "CEP não encontrado", description: "Verifique o CEP e tente novamente", variant: "destructive" })
+        return
+      }
+      setValue("street", data.logradouro || "", { shouldValidate: true })
+      setValue("neighborhood", data.bairro || "", { shouldValidate: true })
+      setValue("city", `${data.localidade} - ${data.uf}`, { shouldValidate: true })
+    } catch {
+      toast({ title: "Erro ao buscar CEP", description: "Verifique sua conexão e tente novamente", variant: "destructive" })
+    } finally {
+      setIsFetchingCep(false)
+    }
+  }
+
   async function onSubmit(data: CheckoutFormValues) {
     setIsSubmitting(true)
 
     try {
+      const addressParts = [
+        data.street && data.number ? `${data.street}, ${data.number}` : data.street,
+        data.neighborhood,
+        data.city,
+        data.cep,
+        data.complement,
+      ].filter(Boolean)
+
       const payload = {
         slug,
         customer: {
@@ -121,12 +170,10 @@ export default function CheckoutPage() {
         },
         orderType: data.orderType,
         deliveryAddress:
-          data.orderType === "DELIVERY"
-            ? [data.address, data.complement, data.reference]
-                .filter(Boolean)
-                .join(" - ")
-            : undefined,
-        deliveryNotes: data.notes || undefined,
+          data.orderType === "DELIVERY" ? addressParts.join(" - ") : undefined,
+        deliveryNotes: data.reference
+          ? `Referência: ${data.reference}${data.notes ? ` | ${data.notes}` : ""}`
+          : data.notes || undefined,
         paymentMethod: data.paymentMethod,
         changeFor:
           data.paymentMethod === "CASH" ? data.changeFor : undefined,
@@ -339,38 +386,105 @@ export default function CheckoutPage() {
               </button>
             </div>
 
-            {/* Delivery Address */}
+            {/* Endereço de entrega */}
             {orderType === "DELIVERY" && (
               <div className="space-y-3 pt-2">
+                {/* CEP */}
                 <div className="space-y-2">
-                  <Label htmlFor="address">Endereço completo *</Label>
-                  <Input
-                    id="address"
-                    placeholder="Rua, número, bairro"
-                    {...register("address")}
-                    className={errors.address ? "border-red-500" : ""}
-                  />
-                  {errors.address && (
-                    <p className="text-red-500 text-sm">
-                      {errors.address.message}
-                    </p>
-                  )}
+                  <Label htmlFor="cep">CEP</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="cep"
+                      placeholder="00000-000"
+                      maxLength={9}
+                      {...register("cep", {
+                        onChange: (e) => {
+                          setValue("cep", formatCepMask(e.target.value))
+                        },
+                      })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          handleCepSearch()
+                        }
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCepSearch}
+                      disabled={isFetchingCep}
+                      className="shrink-0"
+                    >
+                      {isFetchingCep ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Digite o CEP para preencher o endereço automaticamente
+                  </p>
+                </div>
+
+                {/* Rua + número */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="street">Rua / Avenida *</Label>
+                    <Input
+                      id="street"
+                      placeholder="Nome da rua"
+                      {...register("street")}
+                      className={errors.street ? "border-red-500" : ""}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="number">Número *</Label>
+                    <Input id="number" placeholder="123" {...register("number")} />
+                  </div>
+                </div>
+                {errors.street && (
+                  <p className="text-red-500 text-sm">{errors.street.message}</p>
+                )}
+
+                {/* Bairro + cidade */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="neighborhood">Bairro</Label>
+                    <Input
+                      id="neighborhood"
+                      placeholder="Bairro"
+                      {...register("neighborhood")}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="city">Cidade</Label>
+                    <Input
+                      id="city"
+                      placeholder="Cidade - UF"
+                      {...register("city")}
+                      readOnly
+                      className="bg-gray-50"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="complement">Complemento</Label>
                   <Input
                     id="complement"
-                    placeholder="Apto, bloco, etc."
+                    placeholder="Apto, bloco, casa..."
                     {...register("complement")}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="reference">Referência</Label>
+                  <Label htmlFor="reference">Ponto de referência</Label>
                   <Input
                     id="reference"
-                    placeholder="Ponto de referência"
+                    placeholder="Próximo ao..."
                     {...register("reference")}
                   />
                 </div>
