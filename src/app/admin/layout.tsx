@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { AdminHeader } from "@/components/admin/admin-header"
@@ -10,8 +12,14 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  // For now, fetch the first restaurant (auth will be added later)
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user) {
+    redirect("/login")
+  }
+
   const restaurant = await prisma.restaurant.findFirst({
+    where: { owner: { id: session.user.id } },
     select: {
       id: true,
       name: true,
@@ -22,14 +30,14 @@ export default async function AdminLayout({
   })
 
   if (!restaurant) {
-    redirect("/")
+    redirect("/login")
   }
 
   return (
     <div className="flex h-screen bg-gray-950 text-white">
       <AdminSidebar restaurant={restaurant} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AdminHeader restaurant={restaurant} />
+        <AdminHeader restaurant={restaurant} user={session.user} />
         <main className="flex-1 overflow-y-auto p-6 bg-gray-900">
           {children}
         </main>

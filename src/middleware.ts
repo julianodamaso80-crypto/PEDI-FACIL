@@ -1,17 +1,51 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getToken } from "next-auth/jwt"
 
 const RESERVED_SUBDOMAINS = new Set(["www", "app", "admin", "api"])
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone()
   const hostname = request.headers.get("host") || ""
+  const pathname = url.pathname
 
-  // Extrair o domínio base da env ou usar localhost como fallback
+  const isAdminRoute = pathname.startsWith("/admin")
+  const isSuperAdminRoute = pathname.startsWith("/superadmin")
+
+  if (isAdminRoute || isSuperAdminRoute) {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    })
+
+    if (!token) {
+      const loginUrl = new URL("/login", request.url)
+      loginUrl.searchParams.set("callbackUrl", pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+
+    if (isSuperAdminRoute && token.role !== "SUPER_ADMIN") {
+      return NextResponse.redirect(new URL("/admin/dashboard", request.url))
+    }
+
+    if (isAdminRoute && token.role === "SUPER_ADMIN") {
+      return NextResponse.redirect(new URL("/superadmin", request.url))
+    }
+  }
+
+  if (pathname === "/login") {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    })
+    if (token) {
+      if (token.role === "SUPER_ADMIN") {
+        return NextResponse.redirect(new URL("/superadmin", request.url))
+      }
+      return NextResponse.redirect(new URL("/admin/dashboard", request.url))
+    }
+  }
+
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "localhost:3000"
-
-  // Extrair subdomínio
-  // Em dev: pizzariadojose.localhost:3000
-  // Em prod: pizzariadojose.pedefacil.com.br
   let subdomain: string | null = null
 
   if (hostname.includes(appDomain)) {
@@ -21,22 +55,12 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Se não há subdomínio ou é reservado, deixa seguir normalmente
   if (!subdomain || RESERVED_SUBDOMAINS.has(subdomain)) {
     return NextResponse.next()
   }
 
-  // Se já está na rota /store, não reescrever novamente
-  if (url.pathname.startsWith("/store/")) {
-    return NextResponse.next()
-  }
-
-  // Rotas de API não devem ser reescritas
-  if (url.pathname.startsWith("/api/")) {
-    return NextResponse.next()
-  }
-
-  // Arquivos estáticos e _next não devem ser reescritos
+  if (url.pathname.startsWith("/store/")) return NextResponse.next()
+  if (url.pathname.startsWith("/api/")) return NextResponse.next()
   if (
     url.pathname.startsWith("/_next/") ||
     url.pathname.startsWith("/favicon") ||
@@ -45,20 +69,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Reescreve a URL para /store/[slug]/...
   url.pathname = `/store/${subdomain}${url.pathname}`
-
   return NextResponse.rewrite(url)
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 }
